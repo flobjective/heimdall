@@ -349,13 +349,25 @@ Configuration using the `config` property is mandatory. Following properties are
 +
 The JWKS endpoint, this authenticator retrieves the key material in a format specified in https://datatracker.ietf.org/doc/html/rfc7519[RFC 7519] from for JWT signature verification purposes.
 +
-The configuration of this property is mutually exclusive with `metadata_endpoint`. If used, at least the `url` must be configured. By default `method` is set to `GET` and the HTTP `Accept` header to `application/json`. The path part of the `url` can be link:{{< relref "/docs/mechanisms/evaluation_objects.adoc#_templating" >}}[templated] and has access to the `TokenIssuer` object, which is a string and  basically holds the value of the `iss` claim from the token.
+The configuration of this property is mutually exclusive with `metadata_endpoint` and `jwks_file`. If used, at least the `url` must be configured. By default `method` is set to `GET` and the HTTP `Accept` header to `application/json`. The path part of the `url` can be link:{{< relref "/docs/mechanisms/evaluation_objects.adoc#_templating" >}}[templated] and has access to the `TokenIssuer` object, which is a string and  basically holds the value of the `iss` claim from the token.
+
+* *`jwks_file`*: _object_ (dependant, not overridable)
++
+Configuration for loading JWKS from a local file instead of a remote endpoint. This is useful for air-gapped environments or when JWKS data is available locally.
++
+The configuration of this property is mutually exclusive with `jwks_endpoint` and `metadata_endpoint`. When using this option, the `assertions.issuers` configuration becomes mandatory since no issuer can be resolved from a metadata endpoint.
++
+Following properties are available:
++
+** *`path`*: _string_ (mandatory, not overridable)
++
+The file system path to the JWKS file containing the key material in JSON format. The path can be absolute or relative to heimdall's working directory. The path can be link:{{< relref "/docs/mechanisms/evaluation_objects.adoc#_templating" >}}[templated] and has access to the `TokenIssuer` object, which is a string containing the value of the `iss` claim from the token. This allows for dynamic file path resolution based on the token issuer.
 
 * *`metadata_endpoint`*: _link:{{< relref "/docs/configuration/types.adoc#_endpoint">}}[Endpoint]_ (dependant, not overridable)
 +
 The https://datatracker.ietf.org/doc/html/rfc8414[OAuth 2.0 Authorization Server Metadata] endpoint of the OAuth2, respectively OIDC authorization provider (the https://openid.net/specs/openid-connect-discovery-1_0.html[OpenID Connect Discovery] specification is an OIDC specific profile of that specification). If the JWKS URL is not known upfront, it can be resolved by making use of that endpoint.
 +
-The configuration of this property is mutually exclusive with `jwks_endpoint`. If used, at least the `url` must be configured. As with the `jwks_endpoint`, the path part of the `url` can be templated and has access to the `TokenIssuer` object already introduced above.
+The configuration of this property is mutually exclusive with `jwks_endpoint` and `jwks_file`. If used, at least the `url` must be configured. As with the `jwks_endpoint`, the path part of the `url` can be templated and has access to the `TokenIssuer` object already introduced above.
 +
 As with the `jwks_endpoint` as well, the `metadata_endpoint` is by default configured to use `GET` as HTTP method and sets the `Accept` header to `application/json`, as also required by both specifications referenced above. In addition, to avoid useless communication, it is also configured to make use of HTTP cache according to https://tools.ietf.org/html/rfc7234[RFC 7234] with default HTTP cache ttl set to `30m`. All these settings can however be overridden if required.
 +
@@ -387,7 +399,7 @@ Where to get the access token from. Defaults to retrieve it from the `Authorizat
 
 * *`assertions`*: _link:{{< relref "/docs/configuration/types.adoc#_assertions" >}}[Assertions]_ (dependant, overridable)
 +
-Configures the required claim assertions. Overriding on rule level is possible even partially. Those parts of the assertion, which have not been overridden are taken from the prototype configuration. If `metadata_endpoint` is used, the list of issuers is optional, as the issuer will be resolved via the auth server metadata document. Otherwise, the list of issuers is mandatory.
+Configures the required claim assertions. Overriding on rule level is possible even partially. Those parts of the assertion, which have not been overridden are taken from the prototype configuration. If `metadata_endpoint` is used, the list of issuers is optional, as the issuer will be resolved via the auth server metadata document. If `jwks_file` is used, the list of issuers is mandatory. If `jwks_endpoint` is used, the list of issuers is mandatory.
 
 * *`subject`*: _link:{{< relref "/docs/configuration/types.adoc#_subject" >}}[Subject]_ (optional, not overridable)
 +
@@ -441,4 +453,40 @@ config:
           enabled: true
   # Note that no assertions are configured here, since it'll be resolved via the metadata endpoint
 ----
+====
+
+.Configuration using a local JWKS file
+====
+[source, yaml]
+----
+id: file_jwt
+type: jwt
+config:
+  jwks_file:
+    path: /etc/heimdall/jwks/my-keys.json
+  assertions:
+    issuers:
+      - https://my-auth-server.com
+      - https://my-issuer.com
+----
+
+This configuration loads the JWKS directly from a local file. Since no metadata endpoint is used, the issuers must be explicitly configured in the assertions.
+====
+
+.Configuration using a templated JWKS file path
+====
+[source, yaml]
+----
+id: multi_tenant_jwt
+type: jwt
+config:
+  jwks_file:
+    path: /etc/heimdall/jwks/{{ .TokenIssuer | urlquery }}/keys.json
+  assertions:
+    issuers:
+      - https://tenant1.auth-server.com
+      - https://tenant2.auth-server.com
+----
+
+This example shows how to use templating in the file path based on the JWT issuer claim. The path will be dynamically resolved based on the `iss` claim in the token. For example, if a token has `iss: "https://tenant1.auth-server.com"`, the file path would resolve to `/etc/heimdall/jwks/https%3A%2F%2Ftenant1.auth-server.com/keys.json`.
 ====
